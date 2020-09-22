@@ -1,75 +1,57 @@
-import { Component } from "@angular/core";
-import {
+import {Component} from '@angular/core';
+import {createWorker} from 'tesseract.js';
+import {CameraResultType, CameraSource, Plugins} from '@capacitor/core';
 
-} from "@ionic-native/core";
-import { Camera, PictureSourceType } from "@ionic-native/camera/ngx";
-import * as Tesseract from "tesseract.js";
+const {Camera} = Plugins;
 
 @Component({
-  selector: "app-home",
-  templateUrl: "home.page.html",
-  styleUrls: ["home.page.scss"],
+    selector: 'app-home',
+    templateUrl: 'home.page.html',
+    styleUrls: ['home.page.scss'],
 })
 export class HomePage {
-  selectedImage: string;
-  imageText: string;
+    selectedImage: string;
+    imageText: string;
+    worker: Tesseract.Worker;
+    workerReady = false;
+    image = 'https://tesseract.projectnaptha.com/img/eng_bw.png';
+    ocrResult = '';
+    captureProgress = 0;
 
-  constructor(
-    private camera: Camera,
+    constructor() {
+        this.loadWorker();
+    }
 
-  ) {}
+    async loadWorker() {
+        this.worker = createWorker({
+            logger: progress => {
+                if (progress.status === 'recognizing text') {
+                    // tslint:disable-next-line:radix
+                    this.captureProgress = parseInt('' + progress.progress * 100);
+                }
+            }
+        });
+        await this.worker.load();
+        await this.worker.loadLanguage('eng');
+        await this.worker.initialize('eng');
+        this.workerReady = true;
+        console.log('Fin');
+    }
 
-  selectSource() {
-    let actionSheet = this.actionSheetCtrl.create({
-      buttons: [
-        {
-          text: "Use Library",
-          handler: () => {
-            this.getPicture(this.camera.PictureSourceType.PHOTOLIBRARY);
-          },
-        },
-        {
-          text: "Capture Image",
-          handler: () => {
-            this.getPicture(this.camera.PictureSourceType.CAMERA);
-          },
-        },
-        {
-          text: "Cancel",
-          role: "cancel",
-        },
-      ],
-    });
-    actionSheet.present();
-  }
+    async captureImage() {
+        const image = await Camera.getPhoto({
+            quality: 90,
+            allowEditing: true,
+            resultType: CameraResultType.DataUrl,
+            source: CameraSource.Camera
+        });
+        console.log('Image ', image);
+        this.image = image.dataUrl;
+    }
 
-  getPicture(sourceType: PictureSourceType) {
-    this.camera
-      .getPicture({
-        quality: 100,
-        destinationType: this.camera.DestinationType.DATA_URL,
-        sourceType: sourceType,
-        allowEdit: true,
-        saveToPhotoAlbum: false,
-        correctOrientation: true,
-      })
-      .then((imageData) => {
-        this.selectedImage = `data:image/jpeg;base64,${imageData}`;
-      });
-  }
-
-  recognizeImage() {
-    Tesseract.recognize(this.selectedImage)
-      .progress((message) => {
-        if (message.status === "recognizing text")
-          this.progress.set(message.progress);
-      })
-      .catch((err) => console.error(err))
-      .then((result) => {
-        this.imageText = result.text;
-      })
-      .finally((resultOrError) => {
-        this.progress.complete();
-      });
-  }
+    async recognizeImage() {
+        const result = await this.worker.recognize(this.image);
+        console.log(result);
+        this.ocrResult = result.data.text;
+    }
 }
